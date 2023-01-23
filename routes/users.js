@@ -1,4 +1,4 @@
-const validateParamId = require('../middleware/validateParamId');
+const {validateParamId} = require('../middleware/validateParam');
 const {User, validate} = require("../models/user");
 const {Storage} = require("../models/storage");
 const {Router} = require('express');

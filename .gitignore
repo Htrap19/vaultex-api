@@ -3,3 +3,6 @@ coverage/
 
 # log files
 *.log
+
+# Jetbrains IDE
+.idea/

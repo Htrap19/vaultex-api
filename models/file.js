@@ -10,7 +10,7 @@ const fileSchema = new mongoose.Schema({
     name: {
         type: String,
         required: true,
-        min: 5,
+        min: 1,
         max: 255
     },
     size: { // Size in bytes
@@ -30,11 +30,15 @@ const fileSchema = new mongoose.Schema({
     },
 });
 
+fileSchema.methods.getFileSizeInGB = function() {
+    return this.size / 1e+9;
+}
+
 const File = mongoose.model('File', fileSchema);
 
 function validateFile(req) {
     const schema = Joi.object({
-        name: Joi.string().min(5).max(255).required(),
+        name: Joi.string().min(1).max(255).required(),
         size: Joi.number().min(0).max((192 * 1e+6)).required(),
         type: Joi.string().required(),
         data: Joi.string()
