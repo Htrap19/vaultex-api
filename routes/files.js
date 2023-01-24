@@ -1,3 +1,4 @@
+const auth = require('../middleware/auth');
 const {validateParamId, validateParam} = require('../middleware/validateParam');
 const {File, validate} = require("../models/file");
 const {Storage} = require("../models/storage");
@@ -15,12 +16,12 @@ router.get('/:id', validateParamId, async (req, res) => {
     res.json(file);
 });
 
-router.post('/:storageId', validateParam('storageId'), async (req, res) => {
+router.post('/', auth, async (req, res) => {
     const {error} = validate(req.body);
     if (error)
         return res.status(400).json(error.details[0].message);
 
-    const storageId = req.params.storageId;
+    const storageId = req.user.storageId;
     const storage = await Storage.findById(storageId);
     if (!storage)
         return res.status(404).json("Storage not found!");
@@ -52,23 +53,20 @@ router.post('/:storageId', validateParam('storageId'), async (req, res) => {
     }
 });
 
-router.delete('/:storageId/:fileId',
-    [validateParam('storageId'), validateParam('fileId')],
+router.delete('/:fileId',
+    [auth, validateParam('fileId')],
     async (req, res) => {
-    const { storageId, fileId } = req.params;
-
-    const storage = await Storage.findById(storageId);
-    if (!storage)
-        return res.status(404).json("Storage not found!");
+    const { fileId } = req.params;
 
     const file = await File.findById(fileId);
     if (!file)
-        return res.status(400).json("File not found!");
+        return res.status(404).json("File not found!");
 
     try {
         const session = await mongoose.startSession();
         await session.withTransaction(async () => {
             await file.remove();
+            const storage = Storage.findById(req.user.storageId);
             storage.removeFile(file);
             await storage.save();
 
