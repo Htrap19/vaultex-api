@@ -1,11 +1,10 @@
+const transaction = require('../utils/transaction');
 const auth = require('../middleware/auth');
 const {validateParamId, validateParam} = require('../middleware/validateParam');
 const {File, validate} = require("../models/file");
 const {Storage} = require("../models/storage");
 const _ = require("lodash");
 const {Router} = require('express');
-const winston = require("winston");
-const mongoose = require("mongoose");
 const router = Router();
 
 router.get('/:id', validateParamId, async (req, res) => {
@@ -37,46 +36,41 @@ router.post('/', auth, async (req, res) => {
     file.storageId = storageId;
 
     try {
-        const session = await mongoose.startSession();
-        await session.withTransaction(async () => {
-            await file.save();
+        await transaction(async (session) => {
+            await file.save({ session });
             storage.addFile(file);
-            await storage.save();
+            await storage.save({ session });
 
             res.json(file);
         });
-        await session.endSession();
     }
     catch (ex) {
-        winston.error(ex.message);
         res.status(500).json("Something went wrong!");
     }
 });
 
-router.delete('/:fileId',
-    [auth, validateParam('fileId')],
-    async (req, res) => {
-    const { fileId } = req.params;
+router.delete('/:id', [auth, validateParamId], async (req, res) => {
+    const { id } = req.params;
 
-    const file = await File.findById(fileId);
+    const storageId = req.user.storageId;
+    const storage = await Storage.findById(storageId);
+    if (!storage)
+        return res.status(404).json("Storage not found!");
+
+    const file = await File.findById(id);
     if (!file)
         return res.status(404).json("File not found!");
 
     try {
-        const session = await mongoose.startSession();
-        await session.withTransaction(async () => {
-            await file.remove();
-            const storage = Storage.findById(req.user.storageId);
+        await transaction(async (session) => {
+            await file.remove({ session });
             storage.removeFile(file);
-            await storage.save();
+            await storage.save({ session });
 
             res.json(file);
         });
-
-        await session.endSession();
     }
     catch (ex) {
-        winston.error(ex.message);
         res.status(500).json("Something went wrong!");
     }
 });
