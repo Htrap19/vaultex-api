@@ -5,6 +5,7 @@ const Joi = require("joi");
 const fileSchema = new mongoose.Schema({
     storageId: {
         type: mongoose.Schema.Types.ObjectId,
+        ref: 'Storage',
         required: true
     },
     name: {
@@ -28,6 +29,10 @@ const fileSchema = new mongoose.Schema({
     data: {
         type: String
     },
+    shareWith: {
+        type: [mongoose.Schema.Types.ObjectId],
+        ref: 'Storage'
+    }
 });
 
 fileSchema.methods.getFileSizeInGB = function() {
@@ -41,7 +46,8 @@ function validateFile(req) {
         name: Joi.string().min(1).max(255).required(),
         size: Joi.number().min(0).max((192 * 1e+6)).required(),
         type: Joi.string().required(),
-        data: Joi.string()
+        data: Joi.string(),
+        shareWith: Joi.array().items(Joi.objectId())
     });
 
     return schema.validate(req);

@@ -17,14 +17,25 @@ const storageSchema = new mongoose.Schema({
         default: 0,
         min: 0
     },
-    files: [{
-        type: mongoose.Schema.Types.ObjectId,
+    files: {
+        type: [mongoose.Schema.Types.ObjectId],
         ref: 'File',
-    }]
+    },
+    favorites: {
+        type: [mongoose.Schema.Types.ObjectId],
+        ref: 'File',
+    },
+    sharedWithMe: {
+        type: [mongoose.Schema.Types.ObjectId],
+        ref: 'File'
+    }
 });
 
 storageSchema.methods.addFile = function(file) {
     const fileSizeInGB = file.getFileSizeInGB();
+    if (this.files.some(f => f._id.toHexString() === file._id.toHexString()))
+        return;
+
     this.size += fileSizeInGB;
     this.files.push(file);
 }
@@ -42,7 +53,8 @@ function validateStorage(storage) {
         userId: Joi.objectId().required(),
         capacity: Joi.number().min(12),
         size: Joi.number().min(0),
-        files: Joi.array().items(Joi.objectId())
+        files: Joi.array().items(Joi.objectId()),
+        favorites: Joi.array().items(Joi.objectId())
     });
 
     return scheme.validate(storage);
