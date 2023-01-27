@@ -7,8 +7,22 @@ const router = Router();
 router.get('/', auth, async (req, res) => {
     const storage = await Storage
         .findById(req.user.storageId)
-        .populate('files', '-data -storageId')
-        .populate('favorites', '-data -storageId')
+        // .populate('files', '-data -storageId')
+        .populate({
+            path: 'files',
+            select: '-data -storageId',
+            populate: {
+                path: 'shareWith',
+                model: 'Storage',
+                select: 'userId',
+                populate: {
+                    path: 'userId',
+                    model: 'User',
+                    select: 'name phoneNumber'
+                }
+            }
+        })
+        // .populate('favorites', '-data -storageId')
         // .populate('sharedWithMe', '-data -shareWith')
         .populate({
             path: 'sharedWithMe',

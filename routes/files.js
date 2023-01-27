@@ -87,7 +87,36 @@ router.post('/fav/:id', [auth, validateParamId, populateStorage, populateFile], 
         $addToSet: {
             favorites: req.params.id
         }
-    }, { new: true });
+    }, { new: true })
+        // .populate('files', '-data -storageId')
+        .populate({
+            path: 'files',
+            select: '-data -storageId',
+            populate: {
+                path: 'shareWith',
+                model: 'Storage',
+                select: 'userId',
+                populate: {
+                    path: 'userId',
+                    model: 'User',
+                    select: 'name phoneNumber'
+                }
+            }
+        })
+        .populate({
+            path: 'favorites',
+            select: '-data -storageId',
+            populate: {
+                path: 'shareWith',
+                model: 'Storage',
+                select: 'userId',
+                populate: {
+                    path: 'userId',
+                    model: 'User',
+                    select: 'name phoneNumber'
+                }
+            }
+        });
 
     res.json(file);
 });
