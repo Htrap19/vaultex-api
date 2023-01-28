@@ -7,7 +7,6 @@ const {File, validate} = require("../models/file");
 const {Storage} = require("../models/storage");
 const _ = require("lodash");
 const {Router} = require('express');
-const {User} = require("../models/user");
 const router = Router();
 
 router.get('/:id', validateParamId, async (req, res) => {
@@ -83,7 +82,7 @@ router.delete('/:id', [auth, validateParamId], async (req, res) => {
 });
 
 router.post('/fav/:id', [auth, validateParamId, populateStorage, populateFile], async (req, res) => {
-    const file = await Storage.findByIdAndUpdate(req.user.storageId, {
+    await Storage.findByIdAndUpdate(req.user.storageId, {
         $addToSet: {
             favorites: req.params.id
         }
@@ -118,17 +117,17 @@ router.post('/fav/:id', [auth, validateParamId, populateStorage, populateFile], 
             }
         });
 
-    res.json(file);
+    res.json(_.omit({...req.file._doc}, ['data']));
 });
 
 router.delete('/fav/:id', [auth, validateParamId, populateStorage, populateFile], async (req, res) => {
-    const file = await Storage.findByIdAndUpdate(req.user.storageId, {
+    await Storage.findByIdAndUpdate(req.user.storageId, {
         $pull: {
             favorites: req.params.id
         }
     }, { new: true });
 
-    res.json(file);
+    res.json(_.omit({...req.file._doc}, ['data']));
 });
 
 router.post('/share_with/:remoteStorageId/:id',

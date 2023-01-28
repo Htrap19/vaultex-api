@@ -7,6 +7,9 @@ require('./startup/logging')();
 require('./startup/auth')();
 require('./startup/validation')();
 require('./startup/db')();
+// TODO: Should only apply to production build
+require('./startup/prod')(app);
+// ===========================================
 require('./startup/routes')(app);
 
 const PORT = process.env.PORT || 3000;

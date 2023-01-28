@@ -2,6 +2,7 @@ const transaction = require('../utils/transaction');
 const _ = require('lodash');
 const bcrypt = require('bcrypt');
 const auth = require('../middleware/auth');
+const populateStorage = require('../middleware/populateStorage');
 const {User, validate} = require("../models/user");
 const {Storage} = require("../models/storage");
 const {Router} = require('express');
@@ -43,8 +44,21 @@ router.post('/', async (req, res) => {
     }
 });
 
-router.get('/me', auth, async (req, res) => {
-    const user = await User.findById(req.user._id);
+router.get('/me', [auth, populateStorage], async (req, res) => {
+    const user = await User.findById(req.user._id).select('-password');
+    if (!user)
+        return res.status(404).json("User not found!");
+
+    res.json(user);
+});
+
+router.get('/:phoneNumber', [auth], async (req, res) => {
+    const { phoneNumber } = req.params;
+    const user = await User.findOne({ phoneNumber }).select('-password');
+
+    if (!user)
+        return res.status(404).json("User not found!");
+
     res.json(user);
 });
 
