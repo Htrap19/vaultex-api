@@ -8,3 +8,5 @@ coverage/
 .idea/
 
 data/
+# Temp files dir
+temp-files

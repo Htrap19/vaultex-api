@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Joi = require('joi');
+const {File} = require('./file');
 
 const storageSchema = new mongoose.Schema({
     userId: {

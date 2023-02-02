@@ -2,75 +2,108 @@ const transaction = require('../utils/transaction');
 const populateFile = require('../middleware/populateFile');
 const populateStorage = require('../middleware/populateStorage');
 const auth = require('../middleware/auth');
+const multer = require('multer');
 const {validateParamId, validateParam} = require('../middleware/validateParam');
-const {File, validate} = require("../models/file");
+const {File} = require("../models/file");
 const {Storage} = require("../models/storage");
 const _ = require("lodash");
 const {Router} = require('express');
+const path = require("path");
+const winston = require("winston");
+const fs = require("fs");
 const router = Router();
+const upload = multer({ dest: path.join(__dirname, '../temp-files') });
 
-router.get('/:id', validateParamId, async (req, res) => {
+router.get('/download/:id', [auth, validateParamId], async (req, res) => {
     const file = await File.findById(req.params.id);
+    if (!file)
+        return res.status(404).json("File not found!");
+
+    res.attachment(file.filename);
+    file.downloadStream(res);
+});
+
+router.get('/:id', [auth, validateParamId], async (req, res) => {
+    const file = await File.findById(req.params.id)
+        .populate({
+            path: 'metadata.storageId',
+            model: 'Storage',
+            select: 'userId',
+            populate: {
+                path: 'userId',
+                model: 'User',
+                select: 'name phoneNumber'
+            }
+        })
+        .populate({
+            path: 'metadata.shareWith',
+            model: 'Storage',
+            select: 'userId',
+            populate: {
+                path: 'userId',
+                model: 'User',
+                select: 'name phoneNumber'
+            }
+        });
+
     if (!file)
         return res.status(404).json("File not found!");
 
     res.json(file);
 });
 
-router.post('/', [auth, populateStorage], async (req, res) => {
-    const {error} = validate(req.body);
-    if (error)
-        return res.status(400).json(error.details[0].message);
+router.post('/', [auth, populateStorage, upload.any()], async (req, res) => {
+    if (!req.files || req.files.length <= 0)
+        return res.status(400).json("Nothing to upload!");
 
     const storageId = req.user.storageId;
     const {storage} = req;
 
-    const fileData = _.pick(req.body, ['name', 'size', 'type', 'data']);
+    const totalSizeInGB = req.files.reduce((accumulator, file) => accumulator + File.getFileSizeInGB(file), 0);
 
-    const file = new File(fileData);
-
-    const fileSizeInGB = file.getFileSizeInGB();
-    if (storage.capacity < fileSizeInGB + storage.size)
+    // Check for available free space in the storage
+    if (storage.capacity < (totalSizeInGB + storage.size))
         return res.status(400).json("Not enough space!");
 
-    file.storageId = storageId;
+    const uploadedFiles = [];
+    const promises = req.files.map(async file => {
+        const readStream = fs.createReadStream(file.path);
 
-    try {
-        await transaction(async (session) => {
-            // TODO: Refactor the duplicated code
-            // const result = await Storage.findByIdAndUpdate(storageId, {
-            //     $addToSet: { files: file._id },
-            //     $inc: { size: fileSizeInGB }
-            // });
-            // if (!result)
-            //     return res.status(404).json("Storage not found!");
+        try {
+            await transaction(async (session) => {
+                const gridFile = new File({ filename: file.originalname });
+                const fileSizeInGB = File.getFileSizeInGB(file);
+                gridFile.setMetadata(storageId);
 
-            await file.save({session});
-            storage.addFile(file);
-            await storage.save({session});
+                const updatedFile = await gridFile.upload(readStream);
 
-            res.json(file);
-        });
-    } catch (ex) {
-        res.status(500).json("Something went wrong!");
-    }
+                await Storage.findByIdAndUpdate(storageId, {
+                    $addToSet: { files: gridFile._id },
+                    $inc: { size: fileSizeInGB },
+                }, {session});
+
+                uploadedFiles.push(updatedFile);
+            });
+        } catch (ex) {
+            // TODO: Implement error handling logic
+            winston.error(ex);
+        } finally {
+            fs.unlinkSync(file.path);
+        }
+    });
+    await Promise.all(promises);
+
+    res.json(uploadedFiles);
 });
 
-router.delete('/:id', [auth, validateParamId], async (req, res) => {
+router.delete('/:id', [auth, validateParamId, populateStorage, populateFile], async (req, res) => {
     const {id} = req.params;
 
-    const storageId = req.user.storageId;
-    const storage = await Storage.findById(storageId);
-    if (!storage)
-        return res.status(404).json("Storage not found!");
-
-    const file = await File.findById(id);
-    if (!file)
-        return res.status(404).json("File not found!");
+    const {storage} = req;
 
     try {
         await transaction(async (session) => {
-            await file.remove({session});
+            const file = await File.findByIdAndDelete(id, { new: true, session});
             storage.removeFile(file);
             await storage.save({session});
 
@@ -86,13 +119,11 @@ router.post('/fav/:id', [auth, validateParamId, populateStorage, populateFile], 
         $addToSet: {
             favorites: req.params.id
         }
-    }, { new: true })
-        // .populate('files', '-data -storageId')
-        .populate({
+    }).populate({
             path: 'files',
             select: '-data -storageId',
             populate: {
-                path: 'shareWith',
+                path: 'metadata.shareWith',
                 model: 'Storage',
                 select: 'userId',
                 populate: {
@@ -106,7 +137,7 @@ router.post('/fav/:id', [auth, validateParamId, populateStorage, populateFile], 
             path: 'favorites',
             select: '-data -storageId',
             populate: {
-                path: 'shareWith',
+                path: 'metadata.shareWith',
                 model: 'Storage',
                 select: 'userId',
                 populate: {
@@ -117,7 +148,7 @@ router.post('/fav/:id', [auth, validateParamId, populateStorage, populateFile], 
             }
         });
 
-    res.json(_.omit({...req.file._doc}, ['data']));
+    res.json(req.file);
 });
 
 router.delete('/fav/:id', [auth, validateParamId, populateStorage, populateFile], async (req, res) => {
@@ -125,9 +156,9 @@ router.delete('/fav/:id', [auth, validateParamId, populateStorage, populateFile]
         $pull: {
             favorites: req.params.id
         }
-    }, { new: true });
+    });
 
-    res.json(_.omit({...req.file._doc}, ['data']));
+    res.json(req.file);
 });
 
 router.post('/share_with/:remoteStorageId/:id',
@@ -150,7 +181,7 @@ router.post('/share_with/:remoteStorageId/:id',
         await transaction(async (session) => {
             const file = await File.findByIdAndUpdate(id, {
                 $addToSet: {
-                    shareWith: remoteStorageId
+                    "metadata.shareWith": remoteStorageId
                 }
             }, { new: true, session });
             const updatedRemoteStorage = await Storage.findByIdAndUpdate(remoteStorageId, {
@@ -160,7 +191,7 @@ router.post('/share_with/:remoteStorageId/:id',
             }, { new: true, session }).populate('userId');
 
             const responseData = {
-                ..._.pick(file, Object.keys(file._doc).filter(key => key !== "shareWith")),
+                ..._.pick(file, Object.keys(file._doc).filter(key => key !== "metadata")),
                 sharedWith: _.pick(updatedRemoteStorage.userId, ['name', 'phoneNumber'])
             };
             res.json(responseData);
