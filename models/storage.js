@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 const Joi = require('joi');
-const {File} = require('./file');
 
 const storageSchema = new mongoose.Schema({
     userId: {
@@ -45,6 +44,32 @@ storageSchema.methods.removeFile = function(file) {
     const fileSizeInGB = file.getFileSizeInGB();
     this.files = this.files.filter(f => f._id.toHexString() !== file._id.toHexString());
     this.size -= fileSizeInGB;
+}
+
+storageSchema.statics.findByIdAndPopulate = function (id) {
+    const genPopulateObj = (path) => {
+        return {
+            path: path,
+            select: '-metadata.storageId',
+            model: 'File',
+            populate: {
+                path: 'metadata.shareWith',
+                model: 'Storage',
+                select: 'userId',
+                populate: {
+                    path: 'userId',
+                    model: 'User',
+                    select: 'name phoneNumber'
+                }
+            }
+        }
+    };
+
+    // Populate files
+    return this.findById(id)
+        .populate(genPopulateObj('files'))
+        .populate(genPopulateObj('favorites'))
+        .populate(genPopulateObj('sharedWithMe'));``
 }
 
 const Storage = mongoose.model('Storage', storageSchema);
